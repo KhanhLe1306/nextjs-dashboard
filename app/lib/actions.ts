@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { signIn } from '@/auth';
+import { AuthError } from 'next-auth';
+
 const FormSchema = z.object({
   id: z.string(),
   customerId: z.string({ invalid_type_error: 'Please select a customer' }),
@@ -22,7 +25,7 @@ export type State = {
 };
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
 export async function createInvoice(
-  prevState: State,
+  _prevState: State,
   formData: FormData,
 ): Promise<State> {
   const rawFormData = {
@@ -46,8 +49,8 @@ export async function createInvoice(
   const date = new Date().toISOString().split('T')[0];
   try {
     await sql`
-    INSERT INTO Invoices (customer_id, amount, status, date) 
-    VALUES (${customerId}, ${amountInCents}, ${status}, ${date}) 
+    INSERT INTO Invoices (customer_id, amount, status, date)
+    VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
   `;
   } catch (e) {
     return {
@@ -61,7 +64,7 @@ export async function createInvoice(
 const EditInvoice = FormSchema.omit({ id: true, date: true });
 export async function updateInvoice(
   id: string,
-  prevState: State,
+  _prevState: State,
   formData: FormData,
 ) {
   const validatedFields = EditInvoice.safeParse({
@@ -81,7 +84,7 @@ export async function updateInvoice(
     await sql`
     UPDATE Invoices
     SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
-    WHERE id = ${id} 
+    WHERE id = ${id}
   `;
   } catch (e) {
     return {
@@ -93,7 +96,7 @@ export async function updateInvoice(
 }
 
 export async function deleteInvoice(id: string) {
-  throw new Error('Unable to delete invoice');
+  // throw new Error('Unable to delete invoice');
   try {
     await sql`DELETE FROM Invoices WHERE id = ${id}`;
     revalidatePath('/dashboard/invoices');
@@ -102,5 +105,25 @@ export async function deleteInvoice(id: string) {
     return {
       message: 'Database error: Failed to Delete Invoice',
     };
+  }
+}
+
+export async function authenticate(
+  _prevState: string | undefined,
+  formData: FormData,
+) {
+  try {
+    await signIn('credentials', formData);
+  } catch (e) {
+    if (e instanceof AuthError) {
+      switch (e.type) {
+        case 'CredentialsSignin': {
+          return 'Invalid credentials';
+        }
+        default:
+          return 'Something went wrong';
+      }
+    }
+    throw e;
   }
 }
